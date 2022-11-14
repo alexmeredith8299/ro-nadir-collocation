@@ -1,5 +1,8 @@
 # Efficient Collocation of GNSS Radio Occultation Soundings with Passive Nadir Microwave Soundings
+[![DOI](https://zenodo.org/badge/564866497.svg)](https://zenodo.org/badge/latestdoi/564866497)
+
 This repository is associated with the paper "Efficient Collocation of GNSS Radio Occultation Soundings with Passive Nadir Microwave Soundings". It contains code and [instructions on how to download open-source data](#data) associated with the paper.
+
 
 ## Software
 
