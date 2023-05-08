@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
 import numpy as np
+import time
+import erfa
 from sgp4.ext import rv2coe
 from sgp4.api import Satrec
 import math
-from constants_and_utils import tai_to_utc, km_to_degree, hours_to_sec, min_to_sec
+from constants_and_utils import tai_to_utc, km_to_degree, hours_to_sec, min_to_sec, mu, calculate_km_to_degree
 
 def RTCD(mw_sat,ro_sat,time_tolerance,spatial_tolerance,N, times, lats, lons):
     """
@@ -39,6 +41,10 @@ def RTCD(mw_sat,ro_sat,time_tolerance,spatial_tolerance,N, times, lats, lons):
             List of colocation longitudes, corresponding to occultation longitude in radians
         ctimes: list
             List of colocation times, corresponding to occultation time in Unix hours
+        t_coloc: float
+            Approximate MW sounding time for last collocation, in Unix hours
+        zero_crossing: float
+            Approximate MW scan angle for last collocation, in radians
     """
     if mw_sat.day != ro_sat.day:
         raise ValueError(f'ERROR: MW satellite day {mw_sat.day} != RO satellite day {ro_sat.day}')
@@ -54,18 +60,38 @@ def RTCD(mw_sat,ro_sat,time_tolerance,spatial_tolerance,N, times, lats, lons):
     clats, clons, ctimes = [], [], []
     colocs = 0
 
+    if len(times) == 0:
+        return 0, [], [], [], [], []
+
     #Get sat period (we assume it doesn't change much over the day)
     s, tline = mw_sat.get_current_tle(mw_sat.day,times[0]*hours_to_sec+tai_to_utc)
     sat = Satrec.twoline2rv(s, tline)
     sat_period = 2*math.pi/sat.nm
+
+    p = time.gmtime(times[0]*hours_to_sec+tai_to_utc)
+    jd1_start, jd2_start = erfa.dtf2d("UTC", p.tm_year, p.tm_mon, p.tm_mday,
+                                  p.tm_hour, p.tm_min, p.tm_sec)
+    jd = jd1_start+jd2_start
+    e, r, v = sat.sgp4(jd, 0)
+    (p, a, ecc, I, node, argp, nu, m, arglat, truelon, lonper) = rv2coe(r, v, mu)
 
     for j in range(num_occ):
         tj = times[j]
         lat = lats[j]
         lon = lons[j]
         #Get max scan angle
-        ds = mw_sat.calculate_ds(lat)
-        max_scan_angle = ((abs(ds)) + np.deg2rad(spatial_tolerance*km_to_degree))
+        p = time.gmtime(tj*hours_to_sec+tai_to_utc)
+        jd1_start, jd2_start = erfa.dtf2d("UTC", p.tm_year, p.tm_mon, p.tm_mday,
+                                      p.tm_hour, p.tm_min, p.tm_sec)
+        jd = jd1_start+jd2_start
+        e, r, v = sat.sgp4(jd, 0)
+        (p, a, ecc, I, node, argp, nu, m, arglat, truelon, lonper) = rv2coe(r, v, mu)
+        r_norm = (r[0]**2 + r[1]**2 + r[2]**2)**0.5
+        mw_lat = np.arcsin(r[2]/r_norm)
+
+        ds = mw_sat.calculate_ds(mw_lat, a=r_norm)
+        km_to_degree = calculate_km_to_degree(lat)
+        max_scan_angle = ((abs(ds)) + np.deg2rad((spatial_tolerance)*km_to_degree))
 
         coloc = 0
 
@@ -79,14 +105,28 @@ def RTCD(mw_sat,ro_sat,time_tolerance,spatial_tolerance,N, times, lats, lons):
             x_j, y_j, z_j = p_jk[0], p_jk[1], p_jk[2]
 
             num_revs = (t_jk-t_prev_jk)/(sat_period*min_to_sec)
-            is_coloc = RTCD_core(x_prev, y_prev, z_prev, x_j, y_j, z_j, max_scan_angle, num_revs, spatial_tolerance)
+            is_coloc, zero_crossing, start_scan_angle, end_scan_angle = RTCD_core(x_prev, y_prev, z_prev, x_j, y_j, z_j, max_scan_angle, num_revs, spatial_tolerance)
+            frac = (zero_crossing-start_scan_angle)/(end_scan_angle-start_scan_angle)
+            t_coloc = t_prev_jk + frac*(t_jk-t_prev_jk)
             if is_coloc:
-                colocs += 1
-                ctimes.append(tj)
-                clats.append(lat)
-                clons.append(lon)
-                break
-    return colocs, clats,clons, ctimes 
+                p_time = time.gmtime(t_coloc+tai_to_utc)
+                jd1_start, jd2_start = erfa.dtf2d("UTC", p_time.tm_year, p_time.tm_mon, p_time.tm_mday,
+                                          p_time.tm_hour, p_time.tm_min, p_time.tm_sec)
+                jd = jd1_start+jd2_start
+                e, r, v = sat.sgp4(jd, 0)
+                r_norm = (r[0]**2 + r[1]**2 + r[2]**2)**0.5
+                mw_lat = np.arcsin(r[2]/r_norm)
+                ds = mw_sat.calculate_ds(mw_lat, a=r_norm)
+                km_to_degree = calculate_km_to_degree(lat)
+                max_scan_angle = ((abs(ds)) + np.deg2rad((spatial_tolerance)*km_to_degree))
+                if zero_crossing <= max_scan_angle:
+                    colocs += 1
+                    ctimes.append(tj)
+                    clats.append(lat)
+                    clons.append(lon)
+                    break
+
+    return colocs, clats,clons, ctimes, t_coloc, zero_crossing
 
 def RTCD_core(x_prev, y_prev, z_prev, x_j, y_j, z_j, max_scan_angle, num_revs, spatial_tolerance):
     """
@@ -117,6 +157,12 @@ def RTCD_core(x_prev, y_prev, z_prev, x_j, y_j, z_j, max_scan_angle, num_revs, s
     ----------
         is_coloc: bool
             True if the points are colocated, False otherwise
+        zero_crossing: float 
+            Scan angle in radians at the point where the apparent RO scan pattern crosses the delta arglat=0 line
+        start_scan_angle: float
+            Scan angle in radians at the start point
+        end_scan_angle: float
+            Scan angle in radians at the end point
     """
     is_coloc = False
 
@@ -145,6 +191,7 @@ def RTCD_core(x_prev, y_prev, z_prev, x_j, y_j, z_j, max_scan_angle, num_revs, s
 
     #Need to check for 2pi crossing if num_full_revs is big enough, etc.
     i = 0 
+    zero_crossing = 0
     while i*2*math.pi < start_delta_arglat:
         y_int = end_scan_angle - slope*end_delta_arglat
         zero_crossing = y_int + i*slope*2*math.pi
@@ -161,7 +208,7 @@ def RTCD_core(x_prev, y_prev, z_prev, x_j, y_j, z_j, max_scan_angle, num_revs, s
     if np.cos(end_delta_arglat) > np.cos(np.deg2rad(spatial_tolerance*km_to_degree)) and np.abs(end_scan_angle) < max_scan_angle:
         is_coloc = True
 
-    return is_coloc
+    return is_coloc, zero_crossing, start_scan_angle, end_scan_angle
 
 def constrain_for_rtcd(ang1, ang2, num_full_revs=0):
     """

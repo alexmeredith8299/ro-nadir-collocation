@@ -38,6 +38,24 @@ y2021_epoch_to_unix = 1609459200 #offset between start of Unix time (1/1/1970) a
 
 ## Utility functions #######################
 
+def calculate_km_to_degree(lat_geodetic):
+    """
+    This function calculates the latitude-dependent conversion factor between
+    kilometers and degrees.
+
+    Parameters
+    ------------
+        lat_geodetic: float
+            Geodetic latitude [radians]
+
+    Returns
+    --------
+        km_to_degree: float
+            Latitude-dependent conversion factor between kilometers and degrees
+    """
+    r_E = calculate_radius_of_earth(lat_geodetic)
+    return 360/(2*np.pi*r_E)
+
 def calculate_radius_of_earth(lat_geodetic):
     """
     This function calculates the latitude-dependent radius of the Earth.

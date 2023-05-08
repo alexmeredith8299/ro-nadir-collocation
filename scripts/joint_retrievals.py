@@ -233,7 +233,7 @@ def retrieve_daily_colocations(args):
     N=rtcd_N_1
     first_rtcd_N = N
     start_old_rtcd = time.time()
-    colocs, clats,clons,ctimes = RTCD(mw_satellite, ro_satellite,time_tolerance, spatial_tolerance, N, ro_times, ro_lats, ro_lons)
+    colocs, clats,clons,ctimes,_,_ = RTCD(mw_satellite, ro_satellite,time_tolerance, spatial_tolerance, N, ro_times, ro_lats, ro_lons)
     end_old_rtcd = time.time()
     old_rtcd_time = end_old_rtcd-start_old_rtcd
     old_rot = get_coloc_list(clats, clons, ctimes)
@@ -254,7 +254,7 @@ def retrieve_daily_colocations(args):
     N=rtcd_N_2
     second_rtcd_N = N
     start_new_rtcd = time.time()
-    colocs, clats,clons,ctimes = RTCD(mw_satellite, ro_satellite,time_tolerance, spatial_tolerance, N, ro_times, ro_lats, ro_lons)
+    colocs, clats,clons,ctimes,_,_ = RTCD(mw_satellite, ro_satellite,time_tolerance, spatial_tolerance, N, ro_times, ro_lats, ro_lons)
     end_new_rtcd = time.time()
     new_rtcd_time = end_new_rtcd-start_new_rtcd
     new_rot = get_coloc_list(clats, clons, ctimes)

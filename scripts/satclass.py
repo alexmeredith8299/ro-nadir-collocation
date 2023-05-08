@@ -301,7 +301,7 @@ class MWR_G():
 
         raise ValueError(f'ERROR: could not find TLE for day {day} and occultation time {occultation_time}')
 
-    def calculate_ds(self, lat_geodetic):
+    def calculate_ds(self, lat_geodetic, a=None):
         """
         This function calculates the latitude-dependent scan angle for use in the rotation method.
 
@@ -309,15 +309,17 @@ class MWR_G():
         -----------
             lat_geodetic: float
                 Geodetic latitude [radians]
+            a: float
+                Altitude of satellite [km]. If None, constant semimajor axis is used.
 
         Returns
         ---------
             ds: float
                 Latitude-dependent scan angle [radians]
         """
-        return self.calculate_ds_from_xi(lat_geodetic, self.xi)
+        return self.calculate_ds_from_xi(lat_geodetic, self.xi, a=a)
 
-    def calculate_ds_from_xi(self, lat_geodetic, xi):
+    def calculate_ds_from_xi(self, lat_geodetic, xi, a=None):
         """
         This function calculates the latitude-dependent scan angle for use in the rotation method.
 
@@ -327,14 +329,18 @@ class MWR_G():
                 Geodetic latitude [radians]
             xi: float
                 Scan distance [radians]
+            a: float
+                Altitude of satellite [km]. If None, constant semimajor axis is used.
 
         Returns
         ---------
             ds: float
                 Latitude-dependent scan angle [radians]
         """
+        if a == None:
+            a = self.a
         r = calculate_radius_of_earth(lat_geodetic)
-        ds = np.arcsin((self.a/r)*np.sin(xi)) - xi
+        ds = np.arcsin((a/r)*np.sin(xi)) - xi
         return ds
 
     def r_vector_from_jd_and_polarmat(self, jd, polarmat, lon, lat):
